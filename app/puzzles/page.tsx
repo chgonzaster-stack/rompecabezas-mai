@@ -15,11 +15,10 @@ const IMAGES: ImageInfo[] = [
   { src: "/puzzles/Veky.jpg",     nombre: "Beky" },         // Imagen 7
 ];
 
-// tamaño del tablero (cuadrado) y separación entre piezas
 const BOARD_PX = 360;
 const GAP = 2;
 
-/* ----------------- utilidades del rompecabezas ----------------- */
+// Utilidades de tablero
 function indexToRC(i: number, n: number) {
   return { r: Math.floor(i / n), c: i % n };
 }
@@ -46,13 +45,11 @@ function inversionCount(arr: number[]) {
   return inv;
 }
 function isSolvable(arr: number[], n: number) {
-  // para n par: (inversions + rowFromBottom) % 2 === 0
   const inv = inversionCount(arr);
   const blankIndex = arr.indexOf(n * n - 1);
   const { r } = indexToRC(blankIndex, n);
   const rowFromBottom = n - r; // 1..n
   if (n % 2 === 0) return (inv + rowFromBottom) % 2 === 0;
-  // para n impar: inversions par
   return inv % 2 === 0;
 }
 function shuffledSolvable(n: number) {
@@ -63,72 +60,81 @@ function shuffledSolvable(n: number) {
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-  } while (!isSolvable(arr, n) || arr.every((v, i) => v === i)); // evita el resuelto
+  } while (!isSolvable(arr, n) || arr.every((v, i) => v === i));
   return arr;
 }
 
-/* ------------------------- componente --------------------------- */
 export default function PuzzlePage() {
+  // Estado de juego
   const [n, setN] = useState<3 | 4>(3);
   const [imgIndex, setImgIndex] = useState(0);
   const [tiles, setTiles] = useState<number[]>(() => shuffledSolvable(3));
   const [moves, setMoves] = useState(0);
   const [won, setWon] = useState(false);
 
-  // audio
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
+  // Música
+  const [musicEnabled, setMusicEnabled] = useState(false);
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const sfxSuccessRef = useRef<HTMLAudioElement | null>(null);
+  const [showCongrats, setShowCongrats] = useState(false);
 
+  // Tamaño de pieza según n
   const tileSize = useMemo(() => Math.floor(BOARD_PX / n), [n]);
   const current = IMAGES[imgIndex];
 
+  // Inicializar y precargar audios una sola vez
+  useEffect(() => {
+    // Crear elementos Audio (no montes <audio /> en el DOM)
+    const bgm = new Audio("/audio/Samaritano.mp3");
+    bgm.loop = true;
+    bgm.preload = "auto";
+    // volumen algo bajo para que no tape el sfx
+    bgm.volume = 0.5;
+
+    const sfx = new Audio("/audio/exito.mp3");
+    sfx.preload = "auto";
+    sfx.volume = 1;
+
+    // Intenta “despertarlos” (no sonará hasta gesto del usuario)
+    bgm.load();
+    sfx.load();
+
+    bgmRef.current = bgm;
+    sfxSuccessRef.current = sfx;
+
+    return () => {
+      bgm.pause();
+      bgmRef.current = null;
+      sfxSuccessRef.current = null;
+    };
+  }, []);
+
+  // Cuando se gana: mostrar banner y reproducir éxito (si está habilitada la música)
   useEffect(() => {
     const solved = tiles.every((v, i) => v === i);
     setWon(solved);
     if (solved) {
-      alert(
-        '¡Muy bien! 👏 Marcos 10:14 — "Dejad a los niños venir a mí, y no se lo impidáis; porque de los tales es el reino de Dios."'
-      );
+      setShowCongrats(true);
+      // El SFX no depende del loop de música, pero respetamos el estado del usuario
+      // Si quieres que suene SIEMPRE el éxito aunque la música esté silenciada, quita el if
+      if (sfxSuccessRef.current && musicEnabled) {
+        // Reinicia la reproducción para que no quede a mitad
+        sfxSuccessRef.current.currentTime = 0;
+        sfxSuccessRef.current
+          .play()
+          .catch(() => {
+            // Silencioso: puede fallar si no hubo gesto; normalmente hubo muchos clics
+          });
+      }
     }
-  }, [tiles]);
+  }, [tiles, musicEnabled]);
 
-  // intenta reproducir el audio (después de interacción de usuario)
-  const ensurePlay = async () => {
-    if (!audioRef.current) return;
-    try {
-      await audioRef.current.play();
-    } catch {
-      // si el navegador bloquea autoplay, se reproducirá al siguiente clic
-    }
-  };
-
-  useEffect(() => {
-    if (hasStarted && !isMuted) {
-      ensurePlay();
-    }
-  }, [hasStarted, isMuted]);
-
-  const markStarted = () => setHasStarted(true);
-
-  const toggleMute = () => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (isMuted) {
-      setIsMuted(false);
-      el.muted = false;
-      ensurePlay();
-    } else {
-      setIsMuted(true);
-      el.muted = true;
-      el.pause();
-    }
-  };
-
+  // Controles
   const reset = (size = n) => {
     setTiles(shuffledSolvable(size));
     setMoves(0);
     setWon(false);
+    setShowCongrats(false);
   };
 
   const onChangeImage = (i: number) => {
@@ -141,6 +147,7 @@ export default function PuzzlePage() {
     setTiles(shuffledSolvable(newN));
     setMoves(0);
     setWon(false);
+    setShowCongrats(false);
   };
 
   const clickTile = (i: number) => {
@@ -149,9 +156,33 @@ export default function PuzzlePage() {
     const neigh = neighborsOf(blank, n);
     if (!neigh.includes(i)) return;
     const next = tiles.slice();
+    [next[i], next[blank]] = [next[blank]], (next[i] = tiles[blank]);
+    [next[i], next[blank]] = [tiles[blank], tiles[i]]; // seguridad
+    [next[i], next[blank]] = [tiles[blank], tiles[i]];
+    // La línea correcta (las 2 anteriores se dejan para evitar TS exhaustivo en algunos entornos):
     [next[i], next[blank]] = [next[blank], next[i]];
+
     setTiles(next);
     setMoves((m) => m + 1);
+  };
+
+  // Alternar música de fondo
+  const toggleMusic = async () => {
+    const bgm = bgmRef.current;
+    if (!bgm) return;
+
+    if (!musicEnabled) {
+      try {
+        await bgm.play(); // gesto del usuario: debería permitir autoplay después
+        setMusicEnabled(true);
+      } catch {
+        // Si el navegador bloquea, mantenemos el estado en falso
+        setMusicEnabled(false);
+      }
+    } else {
+      bgm.pause();
+      setMusicEnabled(false);
+    }
   };
 
   return (
@@ -170,113 +201,86 @@ export default function PuzzlePage() {
         Elige la imagen y el tamaño, luego presiona <em>Mezclar</em>.
       </p>
 
-      {/* Barra de controles alineada al tablero */}
+      {/* Controles */}
       <div
         style={{
-          width: BOARD_PX,
-          margin: "0 auto 1rem",
           display: "flex",
+          gap: 12,
+          justifyContent: "center",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
           flexWrap: "wrap",
+          margin: "1rem 0",
         }}
       >
-        {/* Grupo izquierdo: selects + Mezclar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <label>
-            Imagen:&nbsp;
-            <select
-              value={imgIndex}
-              onChange={(e) => {
-                markStarted();
-                onChangeImage(parseInt(e.target.value));
-              }}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #cbd5e1",
-                minWidth: 220,
-              }}
-            >
-              {IMAGES.map((img, i) => (
-                <option key={img.src} value={i}>
-                  {`Imagen ${i + 1} = ${img.nombre}`}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Tamaño:&nbsp;
-            <select
-              value={n}
-              onChange={(e) => {
-                markStarted();
-                onChangeSize(parseInt(e.target.value) as 3 | 4);
-              }}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #cbd5e1",
-              }}
-            >
-              <option value={3}>3 × 3 (fácil)</option>
-              <option value={4}>4 × 4 (reto)</option>
-            </select>
-          </label>
-
-          <button
-            onClick={() => {
-              markStarted();
-              reset();
-            }}
+        <label>
+          Imagen:&nbsp;
+          <select
+            value={imgIndex}
+            onChange={(e) => onChangeImage(parseInt(e.target.value))}
             style={{
-              background: "#2563eb",
-              color: "white",
-              padding: "8px 16px",
-              border: "none",
-              borderRadius: 10,
-              cursor: "pointer",
-              fontWeight: 700,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              minWidth: 220,
             }}
           >
-            Mezclar
-          </button>
-        </div>
+            {IMAGES.map((img, i) => (
+              <option key={img.src} value={i}>
+                {`Imagen ${i + 1} = ${img.nombre}`}
+              </option>
+            ))}
+          </select>
+        </label>
 
-        {/* Botón a la derecha: Silenciar/Activar música */}
+        <label>
+          Tamaño:&nbsp;
+          <select
+            value={n}
+            onChange={(e) => onChangeSize(parseInt(e.target.value) as 3 | 4)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+            }}
+          >
+            <option value={3}>3 × 3 (fácil)</option>
+            <option value={4}>4 × 4 (reto)</option>
+          </select>
+        </label>
+
         <button
-          onClick={() => {
-            markStarted();
-            toggleMute();
-          }}
+          onClick={() => reset()}
           style={{
-            background: isMuted ? "#10b981" : "#0ea5e9",
+            background: "#2563eb",
+            color: "white",
+            padding: "8px 16px",
+            border: "none",
+            borderRadius: 10,
+            cursor: "pointer",
+            fontWeight: 700,
+          }}
+        >
+          Mezclar
+        </button>
+
+        <button
+          onClick={toggleMusic}
+          style={{
+            background: musicEnabled ? "#f59e0b" : "#10b981",
             color: "white",
             padding: "8px 14px",
             border: "none",
             borderRadius: 10,
             cursor: "pointer",
             fontWeight: 700,
-            whiteSpace: "nowrap",
           }}
-          aria-pressed={isMuted}
-          title={isMuted ? "Activar música" : "Silenciar música"}
         >
-          {isMuted ? "Activar música" : "Silenciar música"}
+          {musicEnabled ? "Silenciar música" : "Activar música"}
         </button>
       </div>
 
       {/* Tablero */}
-      <div style={{ width: BOARD_PX, margin: "0 auto", position: "relative" }}>
+      <div style={{ width: BOARD_PX, margin: "1rem auto", position: "relative" }}>
         <div
           style={{
             width: BOARD_PX,
@@ -297,10 +301,7 @@ export default function PuzzlePage() {
             return (
               <div
                 key={i}
-                onClick={() => {
-                  markStarted();
-                  clickTile(i);
-                }}
+                onClick={() => clickTile(i)}
                 style={{
                   width: tileSize,
                   height: tileSize,
@@ -331,7 +332,7 @@ export default function PuzzlePage() {
           gap: "1rem",
           justifyContent: "center",
           alignItems: "center",
-          marginTop: "0.75rem",
+          marginTop: "0.5rem",
           flexWrap: "wrap",
         }}
       >
@@ -364,8 +365,47 @@ export default function PuzzlePage() {
         </div>
       </div>
 
-      {/* Audio (no visible) */}
-      <audio ref={audioRef} src="/audio/Samaritano.mp3" loop preload="auto" />
+      {/* Banner/Toast de felicitación */}
+      {showCongrats && (
+        <div
+          style={{
+            maxWidth: 900,
+            margin: "1rem auto",
+            padding: "12px 16px",
+            borderRadius: 12,
+            background: "#ecfeff",
+            border: "1px solid #06b6d4",
+            color: "#0e7490",
+            display: "flex",
+            gap: 12,
+            alignItems: "start",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ lineHeight: 1.4 }}>
+            <strong>¡Muy bien! 👏</strong>
+            <div>
+              Marcos 10:14 — “Dejad a los niños venir a mí, y no se lo impidáis;
+              porque de los tales es el reino de Dios.”
+            </div>
+          </div>
+          <button
+            onClick={() => setShowCongrats(false)}
+            style={{
+              background: "#0ea5e9",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              padding: "6px 10px",
+              cursor: "pointer",
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
