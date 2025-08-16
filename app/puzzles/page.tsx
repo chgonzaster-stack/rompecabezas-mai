@@ -18,7 +18,7 @@ const IMAGES: ImageInfo[] = [
 const BOARD_PX = 360;
 const GAP = 2;
 
-// Utilidades de tablero
+/* ---------- utilidades de tablero ---------- */
 function indexToRC(i: number, n: number) {
   return { r: Math.floor(i / n), c: i % n };
 }
@@ -64,77 +64,96 @@ function shuffledSolvable(n: number) {
   return arr;
 }
 
+/* ---------- componente ---------- */
 export default function PuzzlePage() {
-  // Estado de juego
   const [n, setN] = useState<3 | 4>(3);
   const [imgIndex, setImgIndex] = useState(0);
   const [tiles, setTiles] = useState<number[]>(() => shuffledSolvable(3));
   const [moves, setMoves] = useState(0);
   const [won, setWon] = useState(false);
 
-  // Música
-  const [musicEnabled, setMusicEnabled] = useState(false);
-  const bgmRef = useRef<HTMLAudioElement | null>(null);
-  const sfxSuccessRef = useRef<HTMLAudioElement | null>(null);
-  const [showCongrats, setShowCongrats] = useState(false);
+  // Música de fondo y sonido de éxito
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const successRef = useRef<HTMLAudioElement | null>(null);
 
-  // Tamaño de pieza según n
+  // Control de música y “desbloqueo” de autoplay
+  const [musicOn, setMusicOn] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
+
   const tileSize = useMemo(() => Math.floor(BOARD_PX / n), [n]);
   const current = IMAGES[imgIndex];
 
-  // Inicializar y precargar audios una sola vez
+  /* ---------- preparar audios una sola vez ---------- */
   useEffect(() => {
-    // Crear elementos Audio (no montes <audio /> en el DOM)
-    const bgm = new Audio("/audio/Samaritano.mp3");
-    bgm.loop = true;
-    bgm.preload = "auto";
-    // volumen algo bajo para que no tape el sfx
-    bgm.volume = 0.5;
+    bgMusicRef.current = new Audio("/audio/Samaritano.mp3");
+    if (bgMusicRef.current) {
+      bgMusicRef.current.loop = true;
+      bgMusicRef.current.volume = 0.35;
+      // Evita el autoplay sin interacción
+      bgMusicRef.current.preload = "auto";
+    }
 
-    const sfx = new Audio("/audio/exito.mp3");
-    sfx.preload = "auto";
-    sfx.volume = 1;
-
-    // Intenta “despertarlos” (no sonará hasta gesto del usuario)
-    bgm.load();
-    sfx.load();
-
-    bgmRef.current = bgm;
-    sfxSuccessRef.current = sfx;
+    successRef.current = new Audio("/audio/exito.mp3");
+    if (successRef.current) {
+      successRef.current.preload = "auto";
+      successRef.current.volume = 0.9;
+    }
 
     return () => {
-      bgm.pause();
-      bgmRef.current = null;
-      sfxSuccessRef.current = null;
+      bgMusicRef.current?.pause();
+      bgMusicRef.current = null;
+      successRef.current = null;
     };
   }, []);
 
-  // Cuando se gana: mostrar banner y reproducir éxito (si está habilitada la música)
+  /* ---------- intenta reproducir/pausar música según estados ---------- */
+  useEffect(() => {
+    const music = bgMusicRef.current;
+    if (!music) return;
+
+    if (musicOn && hasInteracted) {
+      // Play seguro: si falla por policy, solo loguea
+      music.play().catch(() => {
+        // Silencioso: no mostramos alertas
+        // console.debug("No se pudo reproducir música todavía.");
+      });
+    } else {
+      music.pause();
+      music.currentTime = Math.min(music.currentTime, music.duration || music.currentTime);
+    }
+  }, [musicOn, hasInteracted]);
+
+  /* ---------- detectar victoria + reproducir sonido de éxito ---------- */
   useEffect(() => {
     const solved = tiles.every((v, i) => v === i);
     setWon(solved);
+
     if (solved) {
-      setShowCongrats(true);
-      // El SFX no depende del loop de música, pero respetamos el estado del usuario
-      // Si quieres que suene SIEMPRE el éxito aunque la música esté silenciada, quita el if
-      if (sfxSuccessRef.current && musicEnabled) {
-        // Reinicia la reproducción para que no quede a mitad
-        sfxSuccessRef.current.currentTime = 0;
-        sfxSuccessRef.current
-          .play()
-          .catch(() => {
-            // Silencioso: puede fallar si no hubo gesto; normalmente hubo muchos clics
+      // Reproduce el sonido corto de éxito
+      const s = successRef.current;
+      if (s) {
+        try {
+          s.currentTime = 0;
+          s.play().catch(() => {
+            // silencioso
           });
+        } catch {
+          // silencioso
+        }
       }
     }
-  }, [tiles, musicEnabled]);
+  }, [tiles]);
 
-  // Controles
+  /* ---------- acciones ---------- */
+  const markInteraction = () => {
+    if (!hasInteracted) setHasInteracted(true);
+  };
+
   const reset = (size = n) => {
+    markInteraction();
     setTiles(shuffledSolvable(size));
     setMoves(0);
     setWon(false);
-    setShowCongrats(false);
   };
 
   const onChangeImage = (i: number) => {
@@ -147,42 +166,23 @@ export default function PuzzlePage() {
     setTiles(shuffledSolvable(newN));
     setMoves(0);
     setWon(false);
-    setShowCongrats(false);
   };
 
   const clickTile = (i: number) => {
+    markInteraction();
     if (won) return;
     const blank = tiles.indexOf(n * n - 1);
     const neigh = neighborsOf(blank, n);
     if (!neigh.includes(i)) return;
     const next = tiles.slice();
-    [next[i], next[blank]] = [next[blank]], (next[i] = tiles[blank]);
-    [next[i], next[blank]] = [tiles[blank], tiles[i]]; // seguridad
-    [next[i], next[blank]] = [tiles[blank], tiles[i]];
-    // La línea correcta (las 2 anteriores se dejan para evitar TS exhaustivo en algunos entornos):
     [next[i], next[blank]] = [next[blank], next[i]];
-
     setTiles(next);
     setMoves((m) => m + 1);
   };
 
-  // Alternar música de fondo
-  const toggleMusic = async () => {
-    const bgm = bgmRef.current;
-    if (!bgm) return;
-
-    if (!musicEnabled) {
-      try {
-        await bgm.play(); // gesto del usuario: debería permitir autoplay después
-        setMusicEnabled(true);
-      } catch {
-        // Si el navegador bloquea, mantenemos el estado en falso
-        setMusicEnabled(false);
-      }
-    } else {
-      bgm.pause();
-      setMusicEnabled(false);
-    }
+  const toggleMusic = () => {
+    markInteraction();
+    setMusicOn((v) => !v);
   };
 
   return (
@@ -263,19 +263,21 @@ export default function PuzzlePage() {
           Mezclar
         </button>
 
+        {/* Botón de música dentro de la página */}
         <button
           onClick={toggleMusic}
           style={{
-            background: musicEnabled ? "#f59e0b" : "#10b981",
+            background: musicOn ? "#ef4444" : "#10b981",
             color: "white",
-            padding: "8px 14px",
+            padding: "8px 12px",
             border: "none",
             borderRadius: 10,
             cursor: "pointer",
             fontWeight: 700,
           }}
+          title={musicOn ? "Silenciar música" : "Activar música"}
         >
-          {musicEnabled ? "Silenciar música" : "Activar música"}
+          {musicOn ? "Silenciar música" : "Activar música"}
         </button>
       </div>
 
@@ -339,8 +341,11 @@ export default function PuzzlePage() {
         <span style={{ color: "#334155" }}>
           Movimientos: <strong>{moves}</strong>
         </span>
-        <span style={{ color: won ? "#16a34a" : "#64748b" }}>
-          {won ? "¡Completado! 🎉" : "En juego…"}
+        <span
+          style={{ color: won ? "#16a34a" : "#64748b" }}
+          aria-live="polite"
+        >
+          {won ? "¡Muy bien! 👏 Marcos 10:14 — \"Dejad a los niños venir a mí, y no se lo impidáis; porque de los tales es el reino de Dios.\"" : "En juego…"}
         </span>
       </div>
 
@@ -364,48 +369,6 @@ export default function PuzzlePage() {
           {current.nombre}
         </div>
       </div>
-
-      {/* Banner/Toast de felicitación */}
-      {showCongrats && (
-        <div
-          style={{
-            maxWidth: 900,
-            margin: "1rem auto",
-            padding: "12px 16px",
-            borderRadius: 12,
-            background: "#ecfeff",
-            border: "1px solid #06b6d4",
-            color: "#0e7490",
-            display: "flex",
-            gap: 12,
-            alignItems: "start",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ lineHeight: 1.4 }}>
-            <strong>¡Muy bien! 👏</strong>
-            <div>
-              Marcos 10:14 — “Dejad a los niños venir a mí, y no se lo impidáis;
-              porque de los tales es el reino de Dios.”
-            </div>
-          </div>
-          <button
-            onClick={() => setShowCongrats(false)}
-            style={{
-              background: "#0ea5e9",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              padding: "6px 10px",
-              cursor: "pointer",
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Cerrar
-          </button>
-        </div>
-      )}
     </div>
   );
 }
