@@ -12,7 +12,12 @@ const IMAGES: ImageInfo[] = [
   { src: "/puzzles/Naty.jpg",     nombre: "Nancy" },        // Imagen 4
   { src: "/puzzles/Rata.jpg",     nombre: "El Rata" },      // Imagen 5
   { src: "/puzzles/Tallarin.jpg", nombre: "Spaguetti" },    // Imagen 6
-  { src: "/puzzles/Veky.jpg",     nombre: "Beky" },         // Imagen 7
+  { src: "/puzzles/Veky.jpg",     nombre: "Beky" },         // Imagen 7  
+  { src: "/puzzles/Azulin.jpg",   nombre: "Azulin" },     // Imagen 8
+  { src: "/puzzles/Mateo.jpg",    nombre: "Mateo" },       // Imagen 9
+  { src: "/puzzles/Spanky.jpg",   nombre: "Spanky" },     // Imagen 10
+  { src: "/puzzles/Tammy.jpg",    nombre: "Tammy" },           // Imagen 11
+  { src: "/puzzles/Zanadorio.jpg",  nombre: "Zanadorio" },  // Imagen 12
 ];
 
 const BOARD_PX = 360;
