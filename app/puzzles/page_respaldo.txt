@@ -1,10 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
-/* ==========================
-   Datos de las imágenes
-   ========================== */
+/** ====== PERSONAJES disponibles (ajusta nombres y rutas si hace falta) ====== */
 const MONOS = [
  { id: "Azulin",     src: "/images/monos/Azulin.png",     nombre: "Azulín" },
   { id: "Chasca",     src: "/images/monos/Chasca.png",     nombre: "Chasca" },
@@ -19,253 +18,354 @@ const MONOS = [
   { id: "Beky",       src: "/images/monos/Veky.png",       nombre: "Beky" },
   { id: "Zanadorio",  src: "/images/monos/Zanadorio.png",  nombre: "Zanadorio" },
 ];
+type PersonajeId = typeof PERSONAJES[number]["id"];
 
-type Tile = { id: number; imgX: number; imgY: number; empty?: boolean };
-
-/* ==========================
-   Select oscuro (custom)
-   ========================== */
-type Option<T extends string | number> = { value: T; label: string };
-
-function DarkSelect<T extends string | number>({
-  label,
-  value,
-  onChange,
-  options,
-  className = "",
-  widthClass = "w-full",
-}: {
-  label?: string;
-  value: T;
-  onChange: (v: T) => void;
-  options: Option<T>[];
-  className?: string;
-  widthClass?: string; // para forzar mismo ancho en ambos selects
-}) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
-  const popRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (!btnRef.current || !popRef.current) return;
-      if (btnRef.current.contains(e.target as Node)) return;
-      if (popRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
-  }, []);
-
-  const active = options.find((o) => o.value === value);
-
-  return (
-    <div className={`relative ${widthClass}`}>
-      {label && <label className="block text-sm opacity-80 mb-1">{label}</label>}
-
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`flex items-center justify-between rounded-lg border px-3 py-2
-        bg-white/10 text-white border-white/20 hover:bg-white/15 focus:outline-none
-        focus:ring-2 focus:ring-emerald-400 shadow-inner ${className}`}
-      >
-        <span className="truncate">{active?.label}</span>
-        <svg className={`w-4 h-4 transition transform ${open ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-        </svg>
-      </button>
-
-      {open && (
-        <div
-          ref={popRef}
-          className="absolute z-40 mt-2 w-full rounded-lg border bg-[#0B1220] text-white border-white/20 shadow-xl overflow-hidden"
-          role="listbox"
-        >
-          <div className="max-h-56 overflow-auto">
-            {options.map((opt) => {
-              const selected = opt.value === value;
-              return (
-                <button
-                  key={String(opt.value)}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 hover:bg-white/10 ${
-                    selected ? "bg-emerald-500/20" : ""
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function findPersonaje(id: PersonajeId) {
+  return PERSONAJES.find((p) => p.id === id) ?? PERSONAJES[0];
 }
 
-/* ==========================
-   Página Rompecabezas
-   ========================== */
-export default function PuzzlePage() {
-  const [monoId, setMonoId] = useState(MONOS[0].id);
-  const [gridSize, setGridSize] = useState(3);
-  const [tiles, setTiles] = useState<Tile[]>([]);
-  const [moves, setMoves] = useState(0);
-  const [solved, setSolved] = useState(false);
+/** ====== Utilidades Sliding Puzzle ====== */
+// Genera arreglo [0..n-1], 0 será el "hueco".
+const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 
-  const playWinSound = () => {
-    const audio = new Audio("/sounds/win.wav");
-    audio.play().catch(() => {});
-  };
+// Cuenta inversiones (para solvencia del rompecabezas)
+function inversionCount(arr: number[]) {
+  let inv = 0;
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      const a = arr[i];
+      const b = arr[j];
+      if (a !== 0 && b !== 0 && a > b) inv++;
+    }
+  }
+  return inv;
+}
 
-  // Construir tablero
+function isSolvable(perm: number[], size: number) {
+  // Para tamaño impar, solvable si inversiones es par.
+  if (size % 2 === 1) return inversionCount(perm) % 2 === 0;
+
+  // Para tamaño par:
+  // - Calcula "fila" del hueco contando desde abajo (1-indexed)
+  const blankIndex = perm.indexOf(0);
+  const rowFromTop = Math.floor(blankIndex / size);
+  const rowFromBottom = size - rowFromTop; // 1..size
+  const inv = inversionCount(perm);
+
+  // Clásica regla:
+  // - Si blank está en fila par desde abajo (2,4,..) entonces inversiones deben ser impares
+  // - Si blank está en fila impar desde abajo (1,3,..) entonces inversiones deben ser pares
+  if (rowFromBottom % 2 === 0) return inv % 2 === 1;
+  return inv % 2 === 0;
+}
+
+function shuffledSolvable(size: number) {
+  const total = size * size;
+  while (true) {
+    const a = range(total);
+    // Fisher-Yates
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    if (isSolvable(a, size)) return a;
+  }
+}
+
+/** ====== Sonidos ====== */
+function useWinSound() {
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
+
   useEffect(() => {
-    const arr: Tile[] = [];
-    let id = 0;
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        arr.push({ id: id++, imgX: x, imgY: y });
-      }
+    if (typeof window === "undefined") return;
+    const Ctx: any =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    try {
+      const ctx: AudioContext = new Ctx();
+      audioCtxRef.current = ctx;
+
+      const load = async () => {
+        try {
+          const res = await fetch("/sounds/win.wav");
+          if (!res.ok) return;
+          const arr = await res.arrayBuffer();
+          const buf = await ctx.decodeAudioData(arr);
+          bufferRef.current = buf;
+        } catch {}
+      };
+      load();
+
+      const resume = () => {
+        ctx.resume().catch(() => {});
+        window.removeEventListener("pointerdown", resume);
+      };
+      window.addEventListener("pointerdown", resume, { once: true });
+
+      return () => {
+        ctx.close().catch(() => {});
+      };
+    } catch {
+      // Nada: si no se puede crear el contexto, seguimos sin sonido
     }
-    arr[arr.length - 1].empty = true; // hueco
-    setTiles(arr);
-    setMoves(0);
-    setSolved(false);
-  }, [monoId, gridSize]);
+  }, []);
 
-  const isAdjacent = (i: number, j: number) => {
-    const xi = i % gridSize, yi = Math.floor(i / gridSize);
-    const xj = j % gridSize, yj = Math.floor(j / gridSize);
-    return Math.abs(xi - xj) + Math.abs(yi - yj) === 1;
+  const play = () => {
+    const ctx = audioCtxRef.current;
+    const buf = bufferRef.current;
+    if (!ctx || !buf) return;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {}
   };
 
-  const checkSolved = (arr: Tile[]) => arr.every((t, i) => t.id === i);
+  return play;
+}
 
-  const shuffle = () => {
-    const mixed = [...tiles].sort(() => Math.random() - 0.5);
-    setTiles(mixed);
+/** ====== Página ====== */
+export default function PuzzlesPage() {
+  /** Tema del fondo (opcional): usa el mismo que Memoria si lo tienes */
+  const themeBg = "from-indigo-950 via-indigo-900 to-indigo-800";
+
+  /** Estado principal */
+  const [imgId, setImgId] = useState<PersonajeId>("Azulin");
+  const [size, setSize] = useState<number>(3);
+  const [tiles, setTiles] = useState<number[]>(() => shuffledSolvable(3));
+  const [moves, setMoves] = useState(0);
+
+  const personaje = findPersonaje(imgId);
+  const thumbSrc = personaje.src;
+
+  const playWin = useWinSound();
+
+  // Reset/mezclar
+  const mezclar = () => {
+    setTiles(shuffledSolvable(size));
     setMoves(0);
-    setSolved(false);
   };
 
-  const handleClick = (index: number) => {
-    const emptyIndex = tiles.findIndex((t) => t.empty);
-    if (isAdjacent(index, emptyIndex)) {
-      const newTiles = [...tiles];
-      [newTiles[index], newTiles[emptyIndex]] = [newTiles[emptyIndex], newTiles[index]];
-      setTiles(newTiles);
-      setMoves((m) => m + 1);
-      if (checkSolved(newTiles)) {
-        setSolved(true);
-        playWinSound();
-      }
+  // Cuando cambia tamaño o imagen, remezclar
+  useEffect(() => {
+    setTiles(shuffledSolvable(size));
+    setMoves(0);
+  }, [size, imgId]);
+
+  const total = size * size;
+  const blankIndex = tiles.indexOf(0);
+
+  /** Comprobación de victoria */
+  const isSolved = useMemo(() => {
+    // Resuelto si coincide con [0..total-1] o [1..total-1,0]? Para sliding puzzle
+    // Aquí usamos "0" hueco al final como posición final:
+    // tiles = [1,2,3,..,total-1,0]
+    for (let i = 0; i < total - 1; i++) {
+      if (tiles[i] !== i + 1) return false;
     }
+    return tiles[total - 1] === 0;
+  }, [tiles, total]);
+
+  useEffect(() => {
+    if (isSolved && moves > 0) {
+      playWin();
+    }
+  }, [isSolved, moves, playWin]);
+
+  /** Movimiento de una ficha */
+  const moveIndex = (idx: number) => {
+    if (isSolved) return;
+    const r1 = Math.floor(idx / size);
+    const c1 = idx % size;
+    const r0 = Math.floor(blankIndex / size);
+    const c0 = blankIndex % size;
+
+    const isAdj =
+      (r1 === r0 && Math.abs(c1 - c0) === 1) ||
+      (c1 === c0 && Math.abs(r1 - r0) === 1);
+
+    if (!isAdj) return;
+
+    const next = tiles.slice();
+    [next[idx], next[blankIndex]] = [next[blankIndex], next[idx]];
+    setTiles(next);
+    setMoves((m) => m + 1);
   };
 
-  const currentMono = MONOS.find((m) => m.id === monoId)!;
+  /** Estilos de posición del fondo para cada tile */
+  const tileStyle = (tileValue: number): React.CSSProperties => {
+    // tileValue va de 0..total-1, pero 0 es hueco
+    if (tileValue === 0) return {};
+    const tilePos = tileValue - 1; // 0..total-2
+    const row = Math.floor(tilePos / size);
+    const col = tilePos % size;
 
-  // opciones para los selects
-  const imagenOpts: Option<string>[] = MONOS.map((m) => ({ value: m.id, label: m.nombre }));
-  const sizeOpts: Option<number>[] = [3, 4, 5].map((n) => ({ value: n, label: `${n} × ${n}` }));
+    const bgSize = `${size * 100}% ${size * 100}%`;
+    const bgPosX = `${(col * 100) / (size - 1)}%`;
+    const bgPosY = `${(row * 100) / (size - 1)}%`;
+
+    // Ajuste fino para que el fondo cuadre perfecto:
+    // Usamos "background-size" a N*N y "background-position" proporcional.
+    return {
+      backgroundImage: `url(${thumbSrc})`,
+      backgroundSize: bgSize,
+      backgroundPosition: `${bgPosX} ${bgPosY}`,
+      backgroundRepeat: "no-repeat",
+    };
+  };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-indigo-950 via-indigo-900 to-indigo-800 text-white">
-      <div className="max-w-5xl mx-auto p-6">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <img src="/images/reverso/cmm.png" className="w-8 h-8" alt="CMM" />
-            Rompecabezas
-          </h1>
-          <nav className="flex gap-2">
-            <Link href="/" className="px-3 py-1 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20">
+    <main
+      className={`min-h-screen bg-gradient-to-b ${themeBg} text-white
+      pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}
+    >
+      {/* HEADER sticky */}
+      <header className="sticky top-0 z-30 backdrop-blur bg-indigo-950/60 border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <img
+              src="/images/reverso/cmm.png"
+              alt="CMM"
+              className="size-8 rounded bg-white p-1"
+            />
+            <h1 className="text-lg sm:text-2xl font-bold">Rompecabezas</h1>
+          </div>
+
+          {/* Acciones visibles en tablet/desktop */}
+          <nav className="hidden sm:flex items-center gap-2">
+            <Link
+              href="/"
+              className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 border border-white/20"
+            >
               Inicio
             </Link>
-            <Link href="/memory" className="px-3 py-1 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20">
+            <Link
+              href="/memory"
+              className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 border border-white/20"
+            >
               Memoria
             </Link>
-            <button onClick={shuffle} className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700">
+            <button
+              onClick={mezclar}
+              className="rounded-xl bg-emerald-500/90 hover:bg-emerald-500 px-3 py-2 text-white"
+            >
               Mezclar
             </button>
           </nav>
-        </header>
+        </div>
+      </header>
 
-        {/* Controles (IMAGEN + TAMAÑO + MOVS) */}
-        <section className="grid gap-4 sm:grid-cols-3 mb-6">
-          <DarkSelect
-          label="Imagen"
-          value={monoId}
-          onChange={(v) => setMonoId(v)}
-          options={imagenOpts}
-          widthClass="min-w-[200px] sm:min-w-[240px]"
-        />
+      {/* FAB móvil Mezclar */}
+      <button
+        onClick={mezclar}
+        className="sm:hidden fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40
+                 rounded-full shadow-lg px-4 py-3 bg-emerald-500 text-white"
+      >
+        Mezclar
+      </button>
 
-        <DarkSelect
-         label="Tamaño"
-         value={gridSize}
-         onChange={(v) => setGridSize(v)}
-         options={sizeOpts}
-         widthClass="min-w-[140px] sm:min-w-[160px]"
-        />
-          <div className="flex flex-col justify-end">
-            <div className="rounded-lg bg-white/10 border border-white/20 px-3 py-2">
-              Movimientos: <b>{moves}</b>
+      {/* Controles */}
+      <section className="max-w-6xl mx-auto px-4 mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Selector de imagen */}
+        <div className="rounded-xl bg-white/10 border border-white/20 p-3 relative z-20">
+          <label className="text-sm opacity-90">Imagen</label>
+          <select
+            value={imgId}
+            onChange={(e) => setImgId(e.target.value as PersonajeId)}
+            className="mt-1 w-full rounded-lg bg-white text-gray-900 px-3 py-2
+                       focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          >
+            {PERSONAJES.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Selector de tamaño */}
+        <div className="rounded-xl bg-white/10 border border-white/20 p-3 relative z-20">
+          <label className="text-sm opacity-90">Tamaño</label>
+          <select
+            value={size}
+            onChange={(e) => setSize(parseInt(e.target.value))}
+            className="mt-1 w-full rounded-lg bg-white text-gray-900 px-3 py-2
+                       focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          >
+            {[3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n} × {n}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Movimientos */}
+        <div className="rounded-xl bg-white/10 border border-white/20 p-3">
+          <label className="text-sm opacity-90">Movimientos</label>
+          <div className="mt-2 text-lg font-semibold">{moves}</div>
+        </div>
+      </section>
+
+      {/* Tablero */}
+      <section className="mt-4 px-4">
+        <div className="mx-auto w-full max-w-[min(92vw,560px)]">
+          {/* Contenedor cuadrado del tablero */}
+          <div
+            className="aspect-square w-full rounded-xl overflow-hidden bg-white/5 border border-white/15 p-1"
+            aria-label="Tablero del rompecabezas"
+          >
+            <div
+              className="grid h-full w-full gap-1"
+              style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
+            >
+              {tiles.map((value, idx) => {
+                const isBlank = value === 0;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => moveIndex(idx)}
+                    disabled={isBlank}
+                    aria-label={isBlank ? "Hueco" : `Ficha ${value}`}
+                    className={`relative rounded-xl border border-white/15 
+                                ${isBlank ? "bg-indigo-900/30" : "bg-white/10 hover:bg-white/15"}`}
+                    style={tileStyle(value)}
+                  >
+                    {/* Etiqueta opcional (debug): 
+                    <span className="absolute bottom-1 right-2 text-xs opacity-80">
+                      {value}
+                    </span> */}
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </section>
 
-        {/* Tablero */}
-        <div
-          className="mx-auto bg-black/20 rounded-lg overflow-hidden"
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
-            width: "min(92vw, 560px)",
-            aspectRatio: "1",
-          }}
-        >
-          {tiles.map((tile, i) => (
-            <div
-              key={i}
-              onClick={() => !tile.empty && handleClick(i)}
-              className={`relative ${tile.empty ? "bg-black/30" : "cursor-pointer hover:opacity-90"}`}
-              style={{
-                backgroundImage: tile.empty ? "none" : `url(${currentMono.src})`,
-                backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
-                backgroundPosition: tile.empty
-                  ? "center"
-                  : `${(tile.imgX * 100) / (gridSize - 1)}% ${(tile.imgY * 100) / (gridSize - 1)}%`,
-              }}
-              aria-label={tile.empty ? "Hueco" : "Ficha"}
-            />
-          ))}
-        </div>
+          {/* Mensaje de victoria */}
+          {isSolved && (
+            <div className="mt-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 p-3 text-center">
+              🎉 ¡Completado en <b>{moves}</b> movimientos!
+            </div>
+          )}
 
-        {/* Referencia */}
-        <div className="mt-4 text-center">
-          <div className="text-sm opacity-70">Referencia</div>
-          <img
-            src={currentMono.src}
-            alt={currentMono.nombre}
-            className="mx-auto mt-2 w-24 h-24 rounded-lg border border-white/20 object-contain"
-          />
-        </div>
-
-        {/* Mensaje ganador */}
-        {solved && (
-          <div className="mt-6 p-3 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-center">
-            🎉 ¡Felicitaciones! Completaste el rompecabezas en <b>{moves}</b> movimientos.
+          {/* Referencia */}
+          <div className="mt-6 text-center">
+            <div className="text-sm opacity-80 mb-2">Referencia</div>
+            <div className="mx-auto w-20 h-20 rounded-xl overflow-hidden bg-white/10 border border-white/20">
+              <img
+                src={thumbSrc}
+                alt="Referencia"
+                className="w-full h-full object-cover"
+              />
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      </section>
+
+      <footer className="mt-10 mb-8 text-center text-sm opacity-80 px-4">
+        Consejo: en móvil, empieza con 3×3. Si buscas más reto, sube a 4×4 o 5×5.
+      </footer>
     </main>
   );
 }

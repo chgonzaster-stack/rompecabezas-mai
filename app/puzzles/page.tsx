@@ -4,12 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 /** ====== PERSONAJES disponibles (ajusta nombres y rutas si hace falta) ====== */
-const MONOS = [
- { id: "Azulin",     src: "/images/monos/Azulin.png",     nombre: "Azulín" },
+const PERSONAJES_PZ = [
+  { id: "Azulin",     src: "/images/monos/Azulin.png",     nombre: "Azulín" },
   { id: "Chasca",     src: "/images/monos/Chasca.png",     nombre: "Chasca" },
+  { id: "Dolly",      src: "/images/monos/Dolly.png",      nombre: "Dolly" },
+  { id: "Florencia",  src: "/images/monos/Florencia.png",  nombre: "Florencia" },
   { id: "Revoltoso",  src: "/images/monos/Horacio.png",    nombre: "Revoltoso" },
+  { id: "Kuky",       src: "/images/monos/Kuky.png",       nombre: "Kuky" },
   { id: "Luby",       src: "/images/monos/Luby.png",       nombre: "Luby" },
   { id: "Mateo",      src: "/images/monos/Mateo.png",      nombre: "Mateo" },
+  { id: "Metichina",  src: "/images/monos/Metichina.png",  nombre: "Metichina" },
   { id: "Naty",       src: "/images/monos/Naty.png",       nombre: "Naty" },
   { id: "Rata",       src: "/images/monos/Rata.png",       nombre: "Rata" },
   { id: "Spanky",     src: "/images/monos/Spanky.png",     nombre: "Spanky" },
@@ -17,11 +21,12 @@ const MONOS = [
   { id: "Tammy",      src: "/images/monos/Tammy.png",      nombre: "Tammy" },
   { id: "Beky",       src: "/images/monos/Veky.png",       nombre: "Beky" },
   { id: "Zanadorio",  src: "/images/monos/Zanadorio.png",  nombre: "Zanadorio" },
-];
-type PersonajeId = typeof PERSONAJES[number]["id"];
+] as const;
+
+type PersonajeId = typeof PERSONAJES_PZ[number]["id"];
 
 function findPersonaje(id: PersonajeId) {
-  return PERSONAJES.find((p) => p.id === id) ?? PERSONAJES[0];
+  return PERSONAJES_PZ.find(p => p.id === id) ?? PERSONAJES_PZ[0];
 }
 
 /** ====== Utilidades Sliding Puzzle ====== */
@@ -276,10 +281,11 @@ export default function PuzzlesPage() {
             className="mt-1 w-full rounded-lg bg-white text-gray-900 px-3 py-2
                        focus:outline-none focus:ring-2 focus:ring-emerald-400"
           >
-            {PERSONAJES.map((p) => (
+			{PERSONAJES_PZ.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nombre}
-              </option>
+			  {p.nombre}
+			 </option>  
+			  
             ))}
           </select>
         </div>
