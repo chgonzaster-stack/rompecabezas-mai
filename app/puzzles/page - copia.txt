@@ -1,0 +1,140 @@
+﻿'use client';
+import { useEffect, useMemo, useState } from 'react';
+
+/**
+ * Imagen base (desde /public). Cambia a la que quieras.
+ * Por ejemplo: '/images/personajes/portada.png'
+ */
+const BASE_IMAGE = '/icons/icon-512x512.png'; // usa un ícono si no tienes imagen grande
+
+const SIZE = 3; // 3x3
+type Tile = number; // 0..8, con 0 = hueco
+
+function createSolved(): Tile[] {
+  return Array.from({ length: SIZE * SIZE }, (_, i) => i);
+}
+function shuffleTiles(): Tile[] {
+  const arr = createSolved();
+  // Mezclado simple; repetimos para asegurar desorden
+  for (let k = 0; k < 200; k++) {
+    const a = Math.floor(Math.random() * arr.length);
+    const b = Math.floor(Math.random() * arr.length);
+    [arr[a], arr[b]] = [arr[b], arr[a]];
+  }
+  // Asegura que sea resolvible (para 3x3, paridad del número de inversiones debe ser par)
+  if (!isSolvable(arr)) [arr[0], arr[1]] = [arr[1], arr[0]];
+  return arr;
+}
+function isSolvable(arr: Tile[]) {
+  const flat = arr.filter(n => n !== 0);
+  let inv = 0;
+  for (let i = 0; i < flat.length; i++) {
+    for (let j = i + 1; j < flat.length; j++) {
+      if (flat[i] > flat[j]) inv++;
+    }
+  }
+  return inv % 2 === 0;
+}
+function idxToRC(i: number) {
+  return { r: Math.floor(i / SIZE), c: i % SIZE };
+}
+function canMove(from: number, empty: number) {
+  const a = idxToRC(from);
+  const b = idxToRC(empty);
+  return (a.r === b.r && Math.abs(a.c - b.c) === 1) || (a.c === b.c && Math.abs(a.r - b.r) === 1);
+}
+
+export default function PuzzlesPage() {
+  const [tiles, setTiles] = useState<Tile[]>([]);
+  const [moves, setMoves] = useState(0);
+
+  const emptyIndex = useMemo(() => tiles.findIndex(t => t === 0), [tiles]);
+  const solved = useMemo(
+    () => tiles.length > 0 && tiles.every((n, i) => n === i),
+    [tiles]
+  );
+
+  useEffect(() => {
+    setTiles(shuffleTiles());
+  }, []);
+
+  const move = (i: number) => {
+    if (solved) return;
+    if (!canMove(i, emptyIndex)) return;
+    setTiles(t => {
+      const clone = [...t];
+      [clone[i], clone[emptyIndex]] = [clone[emptyIndex], clone[i]];
+      return clone;
+    });
+    setMoves(m => m + 1);
+  };
+
+  const reset = () => {
+    setMoves(0);
+    setTiles(shuffleTiles());
+  };
+
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-indigo-900 via-indigo-800 to-indigo-950 text-white p-6">
+      <header className="max-w-4xl mx-auto mb-6 text-center">
+        <h1 className="text-3xl font-bold">Rompecabezas</h1>
+        <p className="opacity-80">Ordena las piezas hasta reconstruir la imagen.</p>
+      </header>
+
+      <section className="max-w-4xl mx-auto flex items-center justify-between mb-4">
+        <div className="text-lg">Movimientos: <span className="font-semibold">{moves}</span></div>
+        <button
+          onClick={reset}
+          className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg border border-white/20"
+        >
+          Mezclar
+        </button>
+      </section>
+
+      <section className="max-w-4xl mx-auto grid place-items-center">
+        <div
+          className="relative grid bg-black/20 rounded-xl overflow-hidden"
+          style={{
+            width: 420,
+            height: 420,
+            gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
+            gridTemplateRows: `repeat(${SIZE}, 1fr)`,
+          }}
+        >
+          {tiles.map((n, i) => {
+            const pos = idxToRC(n);
+            const isEmpty = n === 0;
+            return (
+              <button
+                key={i}
+                onClick={() => move(i)}
+                className={`relative border border-white/10 ${isEmpty ? 'bg-transparent cursor-default' : 'hover:brightness-110'} `}
+                aria-label={isEmpty ? 'Espacio vacío' : 'Mover pieza'}
+                disabled={isEmpty}
+                style={{
+                  backgroundImage: isEmpty ? 'none' : `url(${BASE_IMAGE})`,
+                  backgroundSize: `${SIZE * 100}% ${SIZE * 100}%`,
+                  backgroundPosition: isEmpty ? 'initial' : `${(pos.c * 100) / (SIZE - 1)}% ${(pos.r * 100) / (SIZE - 1)}%`,
+                }}
+              />
+            );
+          })}
+        </div>
+
+        <figure className="mt-4 text-center opacity-90">
+          <figcaption className="text-sm mb-1">Referencia</figcaption>
+          <div
+            className="w-28 h-28 rounded-lg border border-white/20 bg-cover bg-center"
+            style={{ backgroundImage: `url(${BASE_IMAGE})` }}
+          />
+        </figure>
+      </section>
+
+      {solved && (
+        <div className="max-w-4xl mx-auto mt-6 p-4 bg-emerald-500/20 border border-emerald-400/40 rounded-lg text-center">
+          <p className="text-xl">🎉 ¡Listo! Rompecabezas resuelto en {moves} movimientos.</p>
+        </div>
+      )}
+    </main>
+  );
+}

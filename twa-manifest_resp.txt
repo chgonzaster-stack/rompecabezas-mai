@@ -1,0 +1,43 @@
+{
+  "packageId": "org.cmm.memorykids",
+  "host": "cmm-memory-edu-apkkit.vercel.app",
+  "name": "Juego de Memoria • CMM Kids",
+  "launcherName": "CMM Kids",
+  "display": "standalone",
+  "themeColor": "#1e3a8a",
+  "navigationColor": "#1e3a8a",
+  "navigationColorDark": "#0f172a",
+  "backgroundColor": "#0f172a",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://cmm-memory-edu-apkkit.vercel.app/icons/icon-512x512.png",
+  "maskableIconUrl": "https://cmm-memory-edu-apkkit.vercel.app/icons/icon-512x512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "android.keystore",
+    "alias": "android",
+    "password": "password",
+    "keystorePassword": "password"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+ "shortcuts": [
+  { ... },
+  { ... }
+],
+
+    {
+      "name": "Rompecabezas",
+      "shortName": "Puzzles",
+      "url": "/puzzles",
+      "icon": "icons/icon-512x512.png"
+    },
+    {
+      "name": "Memoria",
+      "shortName": "Memoria",
+      "url": "/memory",
+      "icon": "icons/icon-512x512.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli"
+}

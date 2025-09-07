@@ -1,13 +1,57 @@
 {
+  "packageId": "app.vercel.rompecabezas.mai.twa",
+  "host": "rompecabezas-mai.vercel.app",
   "name": "Rompecabezas MAI",
-  "short_name": "MAI Puzzles",
-  "start_url": "/puzzles",
-  "scope": "/",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff",
-  "icons": [
-    { "src": "/icon-192x192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512x512.png", "sizes": "512x512", "type": "image/png" }
-  ]
+  "launcherName": "MAIAPP",
+  "display": "fullscreen",
+  "themeColor": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#000000",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://rompecabezas-mai.vercel.app/icons/icon-512x512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\proyectos\\rompecabezas-apk\\android.keystore",
+    "alias": "maiapp"
+  },
+  "appVersionName": "2",
+  "appVersionCode": 2,
+  "shortcuts": [
+    {
+      "name": "Rompecabezas",
+      "short_name": "Puzzle",
+      "url": "/puzzles",
+      "iconUrl": "https://rompecabezas-mai.vercel.app/icons/icon-96x96.png"
+    },
+    {
+      "name": "Memoria",
+      "short_name": "Memory",
+      "url": "/memory",
+      "iconUrl": "https://rompecabezas-mai.vercel.app/icons/icon-96x96.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://rompecabezas-mai.vercel.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://rompecabezas-mai.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "appVersion": "2"
 }

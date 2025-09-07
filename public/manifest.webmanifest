@@ -1,0 +1,57 @@
+﻿{
+  "name": "CMM Kids – Memoria & Rompecabezas",
+  "short_name": "CMM Kids",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#312e81",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Rompecabezas",
+      "short_name": "Puzzles",
+      "description": "Arma piezas con tus personajes favoritos",
+      "url": "/puzzles",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Juego de Memoria",
+      "short_name": "Memoria",
+      "description": "Encuentra las parejas y gana medallas",
+      "url": "/memory",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

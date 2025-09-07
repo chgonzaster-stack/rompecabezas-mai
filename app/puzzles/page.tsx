@@ -1,379 +1,371 @@
-// app/puzzles/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
-type ImageInfo = { src: string; nombre: string };
-
-const IMAGES: ImageInfo[] = [
-  { src: "/puzzles/Chasca.jpg",   nombre: "Chasca" },       // Imagen 1
-  { src: "/puzzles/Horacio.jpg",  nombre: "Revoltoso" },    // Imagen 2
-  { src: "/puzzles/Luby.jpg",     nombre: "Osita Luvi" },   // Imagen 3
-  { src: "/puzzles/Naty.jpg",     nombre: "Nancy" },        // Imagen 4
-  { src: "/puzzles/Rata.jpg",     nombre: "El Rata" },      // Imagen 5
-  { src: "/puzzles/Tallarin.jpg", nombre: "Spaguetti" },    // Imagen 6
-  { src: "/puzzles/Veky.jpg",     nombre: "Beky" },         // Imagen 7  
-  { src: "/puzzles/Azulin.jpg",   nombre: "Azulin" },     // Imagen 8
-  { src: "/puzzles/Mateo.jpg",    nombre: "Mateo" },       // Imagen 9
-  { src: "/puzzles/Spanky.jpg",   nombre: "Spanky" },     // Imagen 10
-  { src: "/puzzles/Tammy.jpg",    nombre: "Tammy" },           // Imagen 11
-  { src: "/puzzles/Zanadorio.jpg",  nombre: "Zanadorio" },  // Imagen 12
+/** ====== PERSONAJES disponibles (ajusta nombres y rutas si hace falta) ====== */
+const MONOS = [
+ { id: "Azulin",     src: "/images/monos/Azulin.png",     nombre: "Azulín" },
+  { id: "Chasca",     src: "/images/monos/Chasca.png",     nombre: "Chasca" },
+  { id: "Revoltoso",  src: "/images/monos/Horacio.png",    nombre: "Revoltoso" },
+  { id: "Luby",       src: "/images/monos/Luby.png",       nombre: "Luby" },
+  { id: "Mateo",      src: "/images/monos/Mateo.png",      nombre: "Mateo" },
+  { id: "Naty",       src: "/images/monos/Naty.png",       nombre: "Naty" },
+  { id: "Rata",       src: "/images/monos/Rata.png",       nombre: "Rata" },
+  { id: "Spanky",     src: "/images/monos/Spanky.png",     nombre: "Spanky" },
+  { id: "Tallarin",   src: "/images/monos/Tallarin.png",   nombre: "Tallarín" },
+  { id: "Tammy",      src: "/images/monos/Tammy.png",      nombre: "Tammy" },
+  { id: "Beky",       src: "/images/monos/Veky.png",       nombre: "Beky" },
+  { id: "Zanadorio",  src: "/images/monos/Zanadorio.png",  nombre: "Zanadorio" },
 ];
+type PersonajeId = typeof PERSONAJES[number]["id"];
 
-const BOARD_PX = 360;
-const GAP = 2;
+function findPersonaje(id: PersonajeId) {
+  return PERSONAJES.find((p) => p.id === id) ?? PERSONAJES[0];
+}
 
-/* ---------- utilidades de tablero ---------- */
-function indexToRC(i: number, n: number) {
-  return { r: Math.floor(i / n), c: i % n };
-}
-function rcToIndex(r: number, c: number, n: number) {
-  return r * n + c;
-}
-function neighborsOf(i: number, n: number) {
-  const { r, c } = indexToRC(i, n);
-  const out: number[] = [];
-  if (r > 0) out.push(rcToIndex(r - 1, c, n));
-  if (r < n - 1) out.push(rcToIndex(r + 1, c, n));
-  if (c > 0) out.push(rcToIndex(r, c - 1, n));
-  if (c < n - 1) out.push(rcToIndex(r, c + 1, n));
-  return out;
-}
+/** ====== Utilidades Sliding Puzzle ====== */
+// Genera arreglo [0..n-1], 0 será el "hueco".
+const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+
+// Cuenta inversiones (para solvencia del rompecabezas)
 function inversionCount(arr: number[]) {
-  const flat = arr.filter((v) => v !== arr.length - 1);
   let inv = 0;
-  for (let i = 0; i < flat.length; i++) {
-    for (let j = i + 1; j < flat.length; j++) {
-      if (flat[i] > flat[j]) inv++;
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      const a = arr[i];
+      const b = arr[j];
+      if (a !== 0 && b !== 0 && a > b) inv++;
     }
   }
   return inv;
 }
-function isSolvable(arr: number[], n: number) {
-  const inv = inversionCount(arr);
-  const blankIndex = arr.indexOf(n * n - 1);
-  const { r } = indexToRC(blankIndex, n);
-  const rowFromBottom = n - r; // 1..n
-  if (n % 2 === 0) return (inv + rowFromBottom) % 2 === 0;
+
+function isSolvable(perm: number[], size: number) {
+  // Para tamaño impar, solvable si inversiones es par.
+  if (size % 2 === 1) return inversionCount(perm) % 2 === 0;
+
+  // Para tamaño par:
+  // - Calcula "fila" del hueco contando desde abajo (1-indexed)
+  const blankIndex = perm.indexOf(0);
+  const rowFromTop = Math.floor(blankIndex / size);
+  const rowFromBottom = size - rowFromTop; // 1..size
+  const inv = inversionCount(perm);
+
+  // Clásica regla:
+  // - Si blank está en fila par desde abajo (2,4,..) entonces inversiones deben ser impares
+  // - Si blank está en fila impar desde abajo (1,3,..) entonces inversiones deben ser pares
+  if (rowFromBottom % 2 === 0) return inv % 2 === 1;
   return inv % 2 === 0;
 }
-function shuffledSolvable(n: number) {
-  const total = n * n;
-  let arr = Array.from({ length: total }, (_, i) => i);
-  do {
-    for (let i = total - 1; i > 0; i--) {
+
+function shuffledSolvable(size: number) {
+  const total = size * size;
+  while (true) {
+    const a = range(total);
+    // Fisher-Yates
+    for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+      [a[i], a[j]] = [a[j], a[i]];
     }
-  } while (!isSolvable(arr, n) || arr.every((v, i) => v === i));
-  return arr;
+    if (isSolvable(a, size)) return a;
+  }
 }
 
-/* ---------- componente ---------- */
-export default function PuzzlePage() {
-  const [n, setN] = useState<3 | 4>(3);
-  const [imgIndex, setImgIndex] = useState(0);
-  const [tiles, setTiles] = useState<number[]>(() => shuffledSolvable(3));
-  const [moves, setMoves] = useState(0);
-  const [won, setWon] = useState(false);
+/** ====== Sonidos ====== */
+function useWinSound() {
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
 
-  // Música de fondo y sonido de éxito
-  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
-  const successRef = useRef<HTMLAudioElement | null>(null);
-
-  // Control de música y “desbloqueo” de autoplay
-  const [musicOn, setMusicOn] = useState(false);
-  const [hasInteracted, setHasInteracted] = useState(false);
-
-  const tileSize = useMemo(() => Math.floor(BOARD_PX / n), [n]);
-  const current = IMAGES[imgIndex];
-
-  /* ---------- preparar audios una sola vez ---------- */
   useEffect(() => {
-    bgMusicRef.current = new Audio("/audio/Samaritano.mp3");
-    if (bgMusicRef.current) {
-      bgMusicRef.current.loop = true;
-      bgMusicRef.current.volume = 0.35;
-      // Evita el autoplay sin interacción
-      bgMusicRef.current.preload = "auto";
-    }
+    if (typeof window === "undefined") return;
+    const Ctx: any =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    try {
+      const ctx: AudioContext = new Ctx();
+      audioCtxRef.current = ctx;
 
-    successRef.current = new Audio("/audio/exito.mp3");
-    if (successRef.current) {
-      successRef.current.preload = "auto";
-      successRef.current.volume = 0.9;
-    }
+      const load = async () => {
+        try {
+          const res = await fetch("/sounds/win.wav");
+          if (!res.ok) return;
+          const arr = await res.arrayBuffer();
+          const buf = await ctx.decodeAudioData(arr);
+          bufferRef.current = buf;
+        } catch {}
+      };
+      load();
 
-    return () => {
-      bgMusicRef.current?.pause();
-      bgMusicRef.current = null;
-      successRef.current = null;
-    };
+      const resume = () => {
+        ctx.resume().catch(() => {});
+        window.removeEventListener("pointerdown", resume);
+      };
+      window.addEventListener("pointerdown", resume, { once: true });
+
+      return () => {
+        ctx.close().catch(() => {});
+      };
+    } catch {
+      // Nada: si no se puede crear el contexto, seguimos sin sonido
+    }
   }, []);
 
-  /* ---------- intenta reproducir/pausar música según estados ---------- */
-  useEffect(() => {
-    const music = bgMusicRef.current;
-    if (!music) return;
-
-    if (musicOn && hasInteracted) {
-      // Play seguro: si falla por policy, solo loguea
-      music.play().catch(() => {
-        // Silencioso: no mostramos alertas
-        // console.debug("No se pudo reproducir música todavía.");
-      });
-    } else {
-      music.pause();
-      music.currentTime = Math.min(music.currentTime, music.duration || music.currentTime);
-    }
-  }, [musicOn, hasInteracted]);
-
-  /* ---------- detectar victoria + reproducir sonido de éxito ---------- */
-  useEffect(() => {
-    const solved = tiles.every((v, i) => v === i);
-    setWon(solved);
-
-    if (solved) {
-      // Reproduce el sonido corto de éxito
-      const s = successRef.current;
-      if (s) {
-        try {
-          s.currentTime = 0;
-          s.play().catch(() => {
-            // silencioso
-          });
-        } catch {
-          // silencioso
-        }
-      }
-    }
-  }, [tiles]);
-
-  /* ---------- acciones ---------- */
-  const markInteraction = () => {
-    if (!hasInteracted) setHasInteracted(true);
+  const play = () => {
+    const ctx = audioCtxRef.current;
+    const buf = bufferRef.current;
+    if (!ctx || !buf) return;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {}
   };
 
-  const reset = (size = n) => {
-    markInteraction();
+  return play;
+}
+
+/** ====== Página ====== */
+export default function PuzzlesPage() {
+  /** Tema del fondo (opcional): usa el mismo que Memoria si lo tienes */
+  const themeBg = "from-indigo-950 via-indigo-900 to-indigo-800";
+
+  /** Estado principal */
+  const [imgId, setImgId] = useState<PersonajeId>("Azulin");
+  const [size, setSize] = useState<number>(3);
+  const [tiles, setTiles] = useState<number[]>(() => shuffledSolvable(3));
+  const [moves, setMoves] = useState(0);
+
+  const personaje = findPersonaje(imgId);
+  const thumbSrc = personaje.src;
+
+  const playWin = useWinSound();
+
+  // Reset/mezclar
+  const mezclar = () => {
     setTiles(shuffledSolvable(size));
     setMoves(0);
-    setWon(false);
   };
 
-  const onChangeImage = (i: number) => {
-    setImgIndex(i);
-    reset();
-  };
-
-  const onChangeSize = (newN: 3 | 4) => {
-    setN(newN);
-    setTiles(shuffledSolvable(newN));
+  // Cuando cambia tamaño o imagen, remezclar
+  useEffect(() => {
+    setTiles(shuffledSolvable(size));
     setMoves(0);
-    setWon(false);
-  };
+  }, [size, imgId]);
 
-  const clickTile = (i: number) => {
-    markInteraction();
-    if (won) return;
-    const blank = tiles.indexOf(n * n - 1);
-    const neigh = neighborsOf(blank, n);
-    if (!neigh.includes(i)) return;
+  const total = size * size;
+  const blankIndex = tiles.indexOf(0);
+
+  /** Comprobación de victoria */
+  const isSolved = useMemo(() => {
+    // Resuelto si coincide con [0..total-1] o [1..total-1,0]? Para sliding puzzle
+    // Aquí usamos "0" hueco al final como posición final:
+    // tiles = [1,2,3,..,total-1,0]
+    for (let i = 0; i < total - 1; i++) {
+      if (tiles[i] !== i + 1) return false;
+    }
+    return tiles[total - 1] === 0;
+  }, [tiles, total]);
+
+  useEffect(() => {
+    if (isSolved && moves > 0) {
+      playWin();
+    }
+  }, [isSolved, moves, playWin]);
+
+  /** Movimiento de una ficha */
+  const moveIndex = (idx: number) => {
+    if (isSolved) return;
+    const r1 = Math.floor(idx / size);
+    const c1 = idx % size;
+    const r0 = Math.floor(blankIndex / size);
+    const c0 = blankIndex % size;
+
+    const isAdj =
+      (r1 === r0 && Math.abs(c1 - c0) === 1) ||
+      (c1 === c0 && Math.abs(r1 - r0) === 1);
+
+    if (!isAdj) return;
+
     const next = tiles.slice();
-    [next[i], next[blank]] = [next[blank], next[i]];
+    [next[idx], next[blankIndex]] = [next[blankIndex], next[idx]];
     setTiles(next);
     setMoves((m) => m + 1);
   };
 
-  const toggleMusic = () => {
-    markInteraction();
-    setMusicOn((v) => !v);
+  /** Estilos de posición del fondo para cada tile */
+  const tileStyle = (tileValue: number): React.CSSProperties => {
+    // tileValue va de 0..total-1, pero 0 es hueco
+    if (tileValue === 0) return {};
+    const tilePos = tileValue - 1; // 0..total-2
+    const row = Math.floor(tilePos / size);
+    const col = tilePos % size;
+
+    const bgSize = `${size * 100}% ${size * 100}%`;
+    const bgPosX = `${(col * 100) / (size - 1)}%`;
+    const bgPosY = `${(row * 100) / (size - 1)}%`;
+
+    // Ajuste fino para que el fondo cuadre perfecto:
+    // Usamos "background-size" a N*N y "background-position" proporcional.
+    return {
+      backgroundImage: `url(${thumbSrc})`,
+      backgroundSize: bgSize,
+      backgroundPosition: `${bgPosX} ${bgPosY}`,
+      backgroundRepeat: "no-repeat",
+    };
   };
 
   return (
-    <div
-      style={{
-        maxWidth: 900,
-        margin: "2rem auto",
-        padding: "1rem",
-        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-      }}
+    <main
+      className={`min-h-screen bg-gradient-to-b ${themeBg} text-white
+      pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}
     >
-      <h1 style={{ textAlign: "center", marginBottom: "0.25rem" }}>
-        <strong>Rompecabezas MAI</strong>
-      </h1>
-      <p style={{ textAlign: "center", marginTop: 0, color: "#475569" }}>
-        Elige la imagen y el tamaño, luego presiona <em>Mezclar</em>.
-      </p>
+      {/* HEADER sticky */}
+      <header className="sticky top-0 z-30 backdrop-blur bg-indigo-950/60 border-b border-white/10">
+        <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <img
+              src="/images/reverso/cmm.png"
+              alt="CMM"
+              className="size-8 rounded bg-white p-1"
+            />
+            <h1 className="text-lg sm:text-2xl font-bold">Rompecabezas</h1>
+          </div>
+
+          {/* Acciones visibles en tablet/desktop */}
+          <nav className="hidden sm:flex items-center gap-2">
+            <Link
+              href="/"
+              className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 border border-white/20"
+            >
+              Inicio
+            </Link>
+            <Link
+              href="/memory"
+              className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 border border-white/20"
+            >
+              Memoria
+            </Link>
+            <button
+              onClick={mezclar}
+              className="rounded-xl bg-emerald-500/90 hover:bg-emerald-500 px-3 py-2 text-white"
+            >
+              Mezclar
+            </button>
+          </nav>
+        </div>
+      </header>
+
+      {/* FAB móvil Mezclar */}
+      <button
+        onClick={mezclar}
+        className="sm:hidden fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-40
+                 rounded-full shadow-lg px-4 py-3 bg-emerald-500 text-white"
+      >
+        Mezclar
+      </button>
 
       {/* Controles */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          justifyContent: "center",
-          alignItems: "center",
-          flexWrap: "wrap",
-          margin: "1rem 0",
-        }}
-      >
-        <label>
-          Imagen:&nbsp;
+      <section className="max-w-6xl mx-auto px-4 mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Selector de imagen */}
+        <div className="rounded-xl bg-white/10 border border-white/20 p-3 relative z-20">
+          <label className="text-sm opacity-90">Imagen</label>
           <select
-            value={imgIndex}
-            onChange={(e) => onChangeImage(parseInt(e.target.value))}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid #cbd5e1",
-              minWidth: 220,
-            }}
+            value={imgId}
+            onChange={(e) => setImgId(e.target.value as PersonajeId)}
+            className="mt-1 w-full rounded-lg bg-white text-gray-900 px-3 py-2
+                       focus:outline-none focus:ring-2 focus:ring-emerald-400"
           >
-            {IMAGES.map((img, i) => (
-              <option key={img.src} value={i}>
-                {`Imagen ${i + 1} = ${img.nombre}`}
+            {PERSONAJES.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label>
-          Tamaño:&nbsp;
+        {/* Selector de tamaño */}
+        <div className="rounded-xl bg-white/10 border border-white/20 p-3 relative z-20">
+          <label className="text-sm opacity-90">Tamaño</label>
           <select
-            value={n}
-            onChange={(e) => onChangeSize(parseInt(e.target.value) as 3 | 4)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid #cbd5e1",
-            }}
+            value={size}
+            onChange={(e) => setSize(parseInt(e.target.value))}
+            className="mt-1 w-full rounded-lg bg-white text-gray-900 px-3 py-2
+                       focus:outline-none focus:ring-2 focus:ring-emerald-400"
           >
-            <option value={3}>3 × 3 (fácil)</option>
-            <option value={4}>4 × 4 (reto)</option>
+            {[3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n} × {n}
+              </option>
+            ))}
           </select>
-        </label>
+        </div>
 
-        <button
-          onClick={() => reset()}
-          style={{
-            background: "#2563eb",
-            color: "white",
-            padding: "8px 16px",
-            border: "none",
-            borderRadius: 10,
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
-        >
-          Mezclar
-        </button>
-
-        {/* Botón de música dentro de la página */}
-        <button
-          onClick={toggleMusic}
-          style={{
-            background: musicOn ? "#ef4444" : "#10b981",
-            color: "white",
-            padding: "8px 12px",
-            border: "none",
-            borderRadius: 10,
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
-          title={musicOn ? "Silenciar música" : "Activar música"}
-        >
-          {musicOn ? "Silenciar música" : "Activar música"}
-        </button>
-      </div>
+        {/* Movimientos */}
+        <div className="rounded-xl bg-white/10 border border-white/20 p-3">
+          <label className="text-sm opacity-90">Movimientos</label>
+          <div className="mt-2 text-lg font-semibold">{moves}</div>
+        </div>
+      </section>
 
       {/* Tablero */}
-      <div style={{ width: BOARD_PX, margin: "1rem auto", position: "relative" }}>
-        <div
-          style={{
-            width: BOARD_PX,
-            height: BOARD_PX,
-            display: "grid",
-            gridTemplateColumns: `repeat(${n}, ${tileSize}px)`,
-            gridTemplateRows: `repeat(${n}, ${tileSize}px)`,
-            gap: GAP,
-            background: "#e2e8f0",
-            borderRadius: 12,
-            padding: GAP,
-          }}
-        >
-          {tiles.map((v, i) => {
-            const isBlank = v === n * n - 1;
-            const { r: tr, c: tc } = indexToRC(v, n);
-            const canMove = neighborsOf(i, n).includes(tiles.indexOf(n * n - 1));
-            return (
-              <div
-                key={i}
-                onClick={() => clickTile(i)}
-                style={{
-                  width: tileSize,
-                  height: tileSize,
-                  borderRadius: 8,
-                  boxShadow: isBlank ? "none" : "0 1px 2px rgba(0,0,0,.12)",
-                  backgroundColor: isBlank ? "transparent" : "#f8fafc",
-                  backgroundImage: isBlank ? "none" : `url(${current.src})`,
-                  backgroundSize: `${BOARD_PX}px ${BOARD_PX}px`,
-                  backgroundPosition: isBlank
-                    ? "0 0"
-                    : `-${tc * tileSize}px -${tr * tileSize}px`,
-                  cursor: isBlank || won ? "default" : canMove ? "pointer" : "default",
-                  outline:
-                    !isBlank && canMove && !won ? "2px solid #93c5fd" : "none",
-                }}
-                aria-label={isBlank ? "hueco" : current.nombre}
-                role="button"
+      <section className="mt-4 px-4">
+        <div className="mx-auto w-full max-w-[min(92vw,560px)]">
+          {/* Contenedor cuadrado del tablero */}
+          <div
+            className="aspect-square w-full rounded-xl overflow-hidden bg-white/5 border border-white/15 p-1"
+            aria-label="Tablero del rompecabezas"
+          >
+            <div
+              className="grid h-full w-full gap-1"
+              style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
+            >
+              {tiles.map((value, idx) => {
+                const isBlank = value === 0;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => moveIndex(idx)}
+                    disabled={isBlank}
+                    aria-label={isBlank ? "Hueco" : `Ficha ${value}`}
+                    className={`relative rounded-xl border border-white/15 
+                                ${isBlank ? "bg-indigo-900/30" : "bg-white/10 hover:bg-white/15"}`}
+                    style={tileStyle(value)}
+                  >
+                    {/* Etiqueta opcional (debug): 
+                    <span className="absolute bottom-1 right-2 text-xs opacity-80">
+                      {value}
+                    </span> */}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Mensaje de victoria */}
+          {isSolved && (
+            <div className="mt-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 p-3 text-center">
+              🎉 ¡Completado en <b>{moves}</b> movimientos!
+            </div>
+          )}
+
+          {/* Referencia */}
+          <div className="mt-6 text-center">
+            <div className="text-sm opacity-80 mb-2">Referencia</div>
+            <div className="mx-auto w-20 h-20 rounded-xl overflow-hidden bg-white/10 border border-white/20">
+              <img
+                src={thumbSrc}
+                alt="Referencia"
+                className="w-full h-full object-cover"
               />
-            );
-          })}
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Panel info */}
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          justifyContent: "center",
-          alignItems: "center",
-          marginTop: "0.5rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: "#334155" }}>
-          Movimientos: <strong>{moves}</strong>
-        </span>
-        <span
-          style={{ color: won ? "#16a34a" : "#64748b" }}
-          aria-live="polite"
-        >
-          {won ? "¡Muy bien! 👏 Marcos 10:14 — \"Dejad a los niños venir a mí, y no se lo impidáis; porque de los tales es el reino de Dios.\"" : "En juego…"}
-        </span>
-      </div>
-
-      {/* Vista previa */}
-      <div style={{ textAlign: "center", marginTop: "1rem" }}>
-        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>
-          Vista previa
-        </div>
-        <img
-          src={current.src}
-          alt={current.nombre}
-          width={120}
-          height={120}
-          style={{
-            objectFit: "cover",
-            borderRadius: 10,
-            border: "1px solid #e2e8f0",
-          }}
-        />
-        <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
-          {current.nombre}
-        </div>
-      </div>
-    </div>
+      <footer className="mt-10 mb-8 text-center text-sm opacity-80 px-4">
+        Consejo: en móvil, empieza con 3×3. Si buscas más reto, sube a 4×4 o 5×5.
+      </footer>
+    </main>
   );
 }
